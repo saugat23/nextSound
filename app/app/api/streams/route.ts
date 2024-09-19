@@ -27,12 +27,18 @@ export async function POST(req: NextRequest) {
       const extractedId = data.url.split("?v=")[1];
 
       const res = youtubesearchapi.GetVideoDetails(extractedId);
+
+      const thumbnails= res.thumbnail.thumbnails;
+      thumbnails.sort((a: {width: number}, b: {width: number}) => a.width < b.width ? -1 : 1);
       const stream = await prismaClient.stream.create({
         data: {
             userId: data.creatorId,
             url: data.url,
             extractedId,
-            type: "Youtube"
+            type: "Youtube",
+            title: res.title ?? "Can't find video",
+            smallImg: thumbnails.length > 1 ? thumbnails[thumbnails.length - 2].url : thumbnails[thumbnails.length - 1].url ?? "https://img.icons8.com/?size=50&id=j1UxMbqzPi7n&format=png",
+            bigImg: thumbnails[thumbnails.length - 1].url ?? "https://img.icons8.com/?size=50&id=j1UxMbqzPi7n&format=png"
         } 
       }); 
 
