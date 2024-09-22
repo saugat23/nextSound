@@ -1,6 +1,6 @@
 import StreamView from "@/app/components/StreamView";
 
-export default function page({
+export default function Creator({
   params: { creatorId },
 }: {
   params: {
@@ -8,8 +8,8 @@ export default function page({
   };
 }) {
   return (
-    <>
-      <StreamView creatorId={creatorId} />
-    </>
+    <div>
+      <StreamView creatorId={creatorId} playVideo={false} />
+    </div>
   );
 }

@@ -1,17 +1,26 @@
 "use client";
-
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { ChevronUp, ChevronDown, SkipForward, Share2 } from "lucide-react";
-import Image from "next/image";
-import axios from "axios";
+//@ts-ignore
+import {
+  ChevronUp,
+  ChevronDown,
+  ThumbsDown,
+  Play,
+  Share2,
+  Axis3DIcon,
+  SkipForward,
+} from "lucide-react";
 import { toast, Toaster } from "sonner";
+import Navbar from "../components/Navbar";
 import LiteYouTubeEmbed from "react-lite-youtube-embed";
 import "react-lite-youtube-embed/dist/LiteYouTubeEmbed.css";
+//@ts-ignore
+import YouTubePlayer from "youtube-player";
+import Image from "next/image";
 import { YT_REGEX } from "../lib/utils";
-import { randomUUID } from "crypto";
 
 interface Video {
   id: string;
@@ -29,13 +38,19 @@ interface Video {
 
 const REFRESH_INTERVAL_MS = 10 * 1000;
 
-const creatorId = "";
-
-export default function StreamView({ creatorId }: { creatorId: string }) {
+export default function StreamView({
+  creatorId,
+  playVideo = false,
+}: {
+  creatorId: string;
+  playVideo: boolean;
+}) {
   const [inputLink, setInputLink] = useState("");
   const [queue, setQueue] = useState<Video[]>([]);
   const [currentVideo, setCurrentVideo] = useState<Video | null>(null);
   const [loading, setLoading] = useState(false);
+  const [playNextLoader, setPlayNextLoader] = useState(false);
+  const videoPlayerRef = useRef<HTMLDivElement>();
 
   async function refreshStreams() {
     const res = await fetch(`/api/streams/?creatorId=${creatorId}`, {
@@ -43,8 +58,15 @@ export default function StreamView({ creatorId }: { creatorId: string }) {
     });
     const json = await res.json();
     setQueue(
-      json.streams.sort((a: any, b: any) => (a.upvotes < b.upvotes ? -1 : 1))
+      json.streams.sort((a: any, b: any) => (a.upvotes < b.upvotes ? 1 : -1))
     );
+
+    setCurrentVideo((video) => {
+      if (video?.id === json.activeStream?.stream?.id) {
+        return video;
+      }
+      return json.activeStream.stream;
+    });
   }
 
   useEffect(() => {
@@ -54,12 +76,29 @@ export default function StreamView({ creatorId }: { creatorId: string }) {
     }, REFRESH_INTERVAL_MS);
   }, []);
 
-  const extractVideoId = (url: string) => {
-    const regExp =
-      /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-    const match = url.match(regExp);
-    return match && match[2].length === 11 ? match[2] : null;
-  };
+  useEffect(() => {
+    if (!videoPlayerRef.current) {
+      return;
+    }
+    let player = YouTubePlayer(videoPlayerRef.current);
+
+    // 'loadVideoById' is queued until the player is ready to receive API calls.
+    player.loadVideoById(currentVideo?.extractedId);
+
+    // 'playVideo' is queue until the player is ready to received API calls and after 'loadVideoById' has been called.
+    player.playVideo();
+    function eventHandler(event: any) {
+      console.log(event);
+      console.log(event.data);
+      if (event.data === 0) {
+        playNext();
+      }
+    }
+    player.on("stateChange", eventHandler);
+    return () => {
+      player.destroy();
+    };
+  }, [currentVideo, videoPlayerRef]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,10 +138,18 @@ export default function StreamView({ creatorId }: { creatorId: string }) {
     });
   };
 
-  const playNext = () => {
+  const playNext = async () => {
     if (queue.length > 0) {
-      setCurrentVideo(queue[0]);
-      setQueue(queue.slice(1));
+      try {
+        setPlayNextLoader(true);
+        const data = await fetch("/api/streams/next", {
+          method: "GET",
+        });
+        const json = await data.json();
+        setCurrentVideo(json.stream);
+        setQueue((q) => q.filter((x) => x.id !== json.stream?.id));
+      } catch (e) {}
+      setPlayNextLoader(false);
     }
   };
 
@@ -113,15 +160,15 @@ export default function StreamView({ creatorId }: { creatorId: string }) {
         toast.success("Link copied to clipboard!");
       },
       (err) => {
-        console.error("Could not copy text", err);
-        toast.error("Failed to copy Link!!");
+        console.error("Could not copy text: ", err);
+        toast.error("Failed to copy link. Please try again.");
       }
     );
   };
-
   return (
     <>
       <Toaster richColors position="top-right" expand />
+      <Navbar />
       <div className="w-full max-w-[1200px] mx-auto p-4 space-y-6">
         <div className="w-full flex justify-between items-center">
           <h1 className="text-2xl font-bold mb-4">Song Voting Queue</h1>

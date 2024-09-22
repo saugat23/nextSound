@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 
 export async function GET() {
   const session = await getServerSession();
+  // TODO: You can get rid of the db call here
   const user = await prismaClient.user.findFirst({
     where: {
       email: session?.user?.email ?? "",
@@ -13,17 +14,19 @@ export async function GET() {
   if (!user) {
     return NextResponse.json(
       {
-        message: "",
+        message: "Unauthenticated",
       },
       {
-        status: 411,
+        status: 403,
       }
     );
   }
+  console.log("before first call");
 
-  const mostUpvotedStream = prismaClient.stream.findFirst({
+  const mostUpvotedStream = await prismaClient.stream.findFirst({
     where: {
       userId: user.id,
+      played: false,
     },
     orderBy: {
       upvotes: {
@@ -31,6 +34,8 @@ export async function GET() {
       },
     },
   });
+  console.log("after first call");
+  console.log(mostUpvotedStream?.id);
 
   await Promise.all([
     prismaClient.currentStream.upsert({
@@ -38,6 +43,7 @@ export async function GET() {
         userId: user.id,
       },
       update: {
+        userId: user.id,
         streamId: mostUpvotedStream?.id,
       },
       create: {
@@ -45,9 +51,13 @@ export async function GET() {
         streamId: mostUpvotedStream?.id,
       },
     }),
-    prismaClient.stream.delete({
+    prismaClient.stream.update({
       where: {
-        id: mostUpvotedStream?.id,
+        id: mostUpvotedStream?.id ?? "",
+      },
+      data: {
+        played: true,
+        playedTs: new Date(),
       },
     }),
   ]);
